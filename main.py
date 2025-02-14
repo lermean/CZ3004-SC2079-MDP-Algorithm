@@ -1,3 +1,4 @@
+import os
 import time
 from algo.algo import MazeSolver 
 from flask import Flask, request, jsonify
@@ -7,8 +8,12 @@ from helper import command_generator
 
 app = Flask(__name__)
 CORS(app)
-#model = load_model()
 model = None
+
+# @app.route('/')
+# def home():
+#     return "Welcome to the API!"
+
 @app.route('/status', methods=['GET'])
 def status():
     """
@@ -16,7 +21,6 @@ def status():
     :return: a json object with a key "result" and value "ok"
     """
     return jsonify({"result": "ok"})
-
 
 @app.route('/path', methods=['POST'])
 def path_finding():
@@ -27,37 +31,35 @@ def path_finding():
     # Get the json data from the request
     content = request.json
 
-    # Get the obstacles, big_turn, retrying, robot_x, robot_y, and robot_direction from the json data
+    # Get the obstacles, retrying, robot_x, robot_y, and robot_direction from the json data
     obstacles = content['obstacles']
-    # big_turn = int(content['big_turn'])
     retrying = content['retrying']
     robot_x, robot_y = content['robot_x'], content['robot_y']
     robot_direction = int(content['robot_dir'])
 
-    # Initialize MazeSolver object with robot size of 20x20, bottom left corner of robot at (1,1), facing north, and whether to use a big turn or not.
+    # Initialize MazeSolver object
     maze_solver = MazeSolver(20, 20, robot_x, robot_y, robot_direction, big_turn=None)
 
-    # Add each obstacle into the MazeSolver. Each obstacle is defined by its x,y positions, its direction, and its id
+    # Add each obstacle into the MazeSolver
     for ob in obstacles:
         maze_solver.add_obstacle(ob['x'], ob['y'], ob['d'], ob['id'])
 
     start = time.time()
     # Get shortest path
     optimal_path, distance = maze_solver.get_optimal_order_dp(retrying=retrying)
-    print(f"Time taken to find shortest path using A* search: {time.time() - start}s")
+    time_taken = time.time() - start
+    print(f"Time taken to find shortest path using A* search: {time_taken}s")
     print(f"Distance to travel: {distance} units")
     
-    # Based on the shortest path, generate commands for the robot
+    # Generate commands for the robot
     commands = command_generator(optimal_path, obstacles)
 
     # Get the starting location and add it to path_results
     path_results = [optimal_path[0].get_dict()]
-    # Process each command individually and append the location the robot should be after executing that command to path_results
+    # Process each command and append the location the robot should be after executing that command to path_results
     i = 0
     for command in commands:
-        if command.startswith("SNAP"):
-            continue
-        if command.startswith("FIN"):
+        if command.startswith("SNAP") or command.startswith("FIN"):
             continue
         elif command.startswith("FW") or command.startswith("FS"):
             i += int(command[2:]) // 10
@@ -66,15 +68,16 @@ def path_finding():
         else:
             i += 1
         path_results.append(optimal_path[i].get_dict())
+
     return jsonify({
         "data": {
             'distance': distance,
+            'time_taken': time_taken,
             'path': path_results,
             'commands': commands
         },
         "error": None
     })
-
 
 @app.route('/image', methods=['POST'])
 def image_predict():
@@ -89,13 +92,8 @@ def image_predict():
     constituents = file.filename.split("_")
     obstacle_id = constituents[1]
 
-    ## Week 8 ## 
-    #signal = constituents[2].strip(".jpg")
-    #image_id = predict_image(filename, model, signal)
-
-    ## Week 9 ## 
-    # We don't need to pass in the signal anymore
-    image_id = predict_image_week_9(filename,model)
+    # Predict image (assuming predict_image_week_9 is defined elsewhere)
+    image_id = predict_image_week_9(filename, model)
 
     # Return the obstacle_id and image_id
     result = {
@@ -107,7 +105,7 @@ def image_predict():
 @app.route('/stitch', methods=['GET'])
 def stitch():
     """
-    This is the main endpoint for the stitching command. Stitches the images using two different functions, in effect creating two stitches, just for redundancy purposes
+    This is the main endpoint for the stitching command. Stitches the images using two different functions.
     """
     img = stitch_image()
     img.show()
@@ -116,4 +114,4 @@ def stitch():
     return jsonify({"result": "ok"})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(debug=True, host="0.0.0.0", port=5001)
